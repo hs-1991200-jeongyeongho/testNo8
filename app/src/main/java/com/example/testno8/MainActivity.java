@@ -7,14 +7,12 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.protobuf.ByteString;
 import okhttp3.*;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.util.Base64;
 
 public class MainActivity extends AppCompatActivity {
@@ -58,6 +56,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void transcribeAudio(String filePath) throws IOException {
+        // JSON 키 파일의 경로 (클라이언트 인증 정보) 현재 credentials.json 파일이 없기 때문에 R.raw.credentials 부분 오류
+        String keyFilePath = "android.resource://" + getPackageName() + "/" + R.raw.credentials;
+
+        // JSON 키 파일을 사용하여 GoogleCredentials를 만듭니다.
+        GoogleCredentials credentials = GoogleCredentials.fromStream(new FileInputStream(keyFilePath));
+
         OkHttpClient client = new OkHttpClient();
         File audioFile = new File(filePath);
         byte[] audioBytes = new byte[(int) audioFile.length()];
