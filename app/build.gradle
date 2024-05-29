@@ -55,5 +55,6 @@ dependencies {
     implementation 'com.google.protobuf:protobuf-java-util:3.21.12' // Protocol Buffers 유틸리티 라이브러리 추가
     implementation 'com.squareup.okhttp3:okhttp:4.9.1'
     implementation 'com.google.code.gson:gson:2.8.6'
-
+    implementation 'androidx.appcompat:appcompat:1.2.0'
+    implementation 'androidx.core:core-ktx:1.5.0'
 }
