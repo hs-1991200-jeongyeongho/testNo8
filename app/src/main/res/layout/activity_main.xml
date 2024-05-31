@@ -1,17 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_encrypt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        app:backgroundTint="#EAD050"
+        android:gravity="center"
+        android:letterSpacing="0.2"
+        android:padding="16dp"
+        android:text="ENCRYPT"
+        android:textColor="@color/black"
+        android:textStyle="bold"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="32dp"/>
+
+    <Button
+        android:id="@+id/btn_decrypt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="20dp"
+        app:backgroundTint="#EAD050"
+        android:gravity="center"
+        android:letterSpacing="0.2"
+        android:padding="16dp"
+        android:text="DECRYPT"
+        android:textColor="@color/black"
+        android:textStyle="bold"
+        android:layout_below="@id/btn_encrypt"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="16dp"/>
 
     <Button
         android:id="@+id/startRecordingButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Start Recording"
+        android:layout_below="@id/btn_decrypt"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="32dp"/>
+        android:layout_marginTop="16dp"/>
 
     <Button
         android:id="@+id/stopRecordingButton"
@@ -21,5 +55,62 @@
         android:layout_below="@id/startRecordingButton"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="16dp"/>
+
+    <LinearLayout
+        android:id="@+id/encrypted_text_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="32dp"
+        android:layout_below="@id/stopRecordingButton"
+        android:layout_centerHorizontal="true">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Encrypted Text :"
+            android:textColor="#000000"
+            android:layout_marginEnd="16dp"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+
+        <TextView
+            android:id="@+id/txt_encrypted"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="-"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/decrypted_text_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp"
+        android:layout_below="@id/encrypted_text_container"
+        android:layout_centerHorizontal="true"
+        android:layout_marginHorizontal="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Decrypted Text :"
+            android:textColor="#000000"
+            android:layout_marginEnd="16dp"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+
+        <TextView
+            android:id="@+id/txt_decrypted"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="-"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+    </LinearLayout>
 
 </RelativeLayout>
