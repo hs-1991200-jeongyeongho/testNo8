@@ -1,9 +1,17 @@
 package com.example.testno8;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -17,6 +25,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.Base64;
 
 import okhttp3.Call;
@@ -27,13 +40,34 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import android.telephony.SmsManager;
+import android.widget.Toast;
+import androidx.core.content.ContextCompat;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.os.Build;
+
+
+import org.tensorflow.lite.Interpreter;
+
 public class MainActivity extends AppCompatActivity {
 
+
+    private static final int REQUEST_PERMISSION_SEND_SMS = 1; // SMS 보내기 권한 요청 코드
+    private static final int REQUEST_PERMISSION_POST_NOTIFICATIONS = 2; // 알림 권한 요청 코드
+    private static final int FROM_TXT_FILE = 1;
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
     private static final String TAG = "MainActivity";
     private static final String API_KEY = "YOUR_API_KEY";  // Replace with your actual API key
     private boolean permissionToReadStorageAccepted = false;
     private String[] permissions = {Manifest.permission.READ_EXTERNAL_STORAGE};
+
+    private TextView tv_output = findViewById(R.id.detect_result);
+
+    private String detect_result_alert;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,12 +75,41 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
+
+        Button detectBtn = findViewById(R.id.detect);
+        detectBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                detect_result_alert = tv_output.getText().toString();
+                Log.i(TAG,"Result=" + detect_result_alert);
+                checkAndSendSMS(detect_result_alert);
+            }
+        });
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         permissionToReadStorageAccepted = requestCode == REQUEST_RECORD_AUDIO_PERMISSION && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+        if (requestCode == REQUEST_PERMISSION_SEND_SMS) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // SMS 보내기 권한이 허용된 경우 알림 및 SMS 보내기
+                addNotificationChannel(); // 알림 채널 추가
+                sendNotification(); // 알림 보내기
+            } else {
+                // SMS 보내기 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
+                Toast.makeText(this, "SMS 보내기 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+            }
+        } else if (requestCode == REQUEST_PERMISSION_POST_NOTIFICATIONS) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // POST_NOTIFICATIONS 권한이 허용된 경우 알림 보내기
+                sendNotification();
+            } else {
+                // POST_NOTIFICATIONS 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
+                Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+            }
+        }
 
         if (permissionToReadStorageAccepted) {
             transcribeAudioFromTphone();
@@ -69,10 +132,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void transcribeAudio(String filePath) throws IOException {
         // JSON 키 파일의 경로 (클라이언트 인증 정보) 현재 credentials.json 파일이 없기 때문에 R.raw.credentials 부분 오류
-        String keyFilePath = "android.resource://" + getPackageName() + "/" + R.raw.credentials;
+        //String keyFilePath = "android.resource://" + getPackageName() + "/" + R.raw.credentials;
 
         // JSON 키 파일을 사용하여 GoogleCredentials를 만듭니다.
-        GoogleCredentials credentials = GoogleCredentials.fromStream(new FileInputStream(keyFilePath));
+        //GoogleCredentials credentials = GoogleCredentials.fromStream(new FileInputStream(keyFilePath));
 
         OkHttpClient client = new OkHttpClient();
         File audioFile = new File(filePath);
@@ -140,4 +203,140 @@ public class MainActivity extends AppCompatActivity {
             Log.e(TAG, "Error saving transcription to file: " + e.getMessage());
         }
     }
+
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == FROM_TXT_FILE && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) {
+                try {
+                    InputStream inputStream = getContentResolver().openInputStream(uri);
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                    StringBuilder stringBuilder = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        stringBuilder.append(line).append("\n");
+                    }
+                    reader.close();
+                    inputStream.close();
+
+                    String fileContent = stringBuilder.toString();
+
+                    // 텍스트 전처리 및 모델 입력 준비
+                    float[] input = preprocessText(fileContent);
+                    float[] output = new float[5];
+
+                    // 모델 실행
+                    Interpreter lite = getTfliteInterpreter("converted_model.tflite");
+                    lite.run(input, output);
+
+                    // 결과 처리 및 표시
+                    displayOutput(output);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    // 이건 해보고 안되면 해야될수도 잘 모르겠음
+    private float[] preprocessText(String text) {
+        // 텍스트 전처리 로직 구현 (예: 단어 빈도수, 임베딩 등)
+        // 여기서는 예시로 224 크기의 배열 반환
+        return new float[224]; // 실제 모델의 입력 크기에 맞게 수정 필요
+    }
+
+    private void displayOutput(float[] output) {
+        for (int i = 0; i < output.length; i++) {
+            if (output[i] * 100 > 80) {
+                String resultText = Float.toString(output[i] * 100);
+                tv_output.setText(resultText);
+                return;  // 하나의 결과만 표시하고 종료
+            }
+        }
+        tv_output.setText("보이스피싱이 감지되지 않았습니다.");
+    }
+
+
+
+    // 이 부분은 모델 연동 위해 필수 코드
+    private Interpreter getTfliteInterpreter (String modelPath) {
+        try {
+            return new Interpreter (loadModelFile(MainActivity.this, modelPath));
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // 이 부분은 모델 연동 위해 필수 코드
+    public MappedByteBuffer loadModelFile(Activity activity, String modelPath) throws IOException {
+        AssetFileDescriptor fileDescriptor = activity.getAssets().openFd(modelPath);
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+        FileChannel fileChannel = inputStream.getChannel();
+        long startOffset = fileDescriptor.getStartOffset();
+        long declaredLength = fileDescriptor.getDeclaredLength();
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    }
+
+    // 알림 채널 추가 메서드
+    private void addNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Channel name";
+            String description = "Channel description";
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel("default", name, importance);
+            channel.setDescription(description);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    // 알림 보내기 메서드
+    private void sendNotification() {
+        // 알림 권한 확인
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_PERMISSION_POST_NOTIFICATIONS);
+            return;
+        }
+
+        // 인텐트 생성
+        Intent intent = new Intent(this, AlertActivity.class);
+        intent.setAction("com.example.apptest.ACTION_SMS_DIALOG");
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        // 알림 생성
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "default")
+                .setSmallIcon(R.drawable.baseline_notification_important_24)
+                .setContentTitle("보이스 피싱 탐지")
+                .setContentText("보이스 피싱이 감지 됐습니다. 조심하세요.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true);
+
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        notificationManager.notify(1, builder.build());
+    }
+
+    private void checkAndSendSMS(String detect_result_alert) {
+        int detect_int = Integer.parseInt(detect_result_alert);
+
+        if (detect_int > 80) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                // SEND_SMS 권한이 없는 경우 권한 요청 다이얼로그 표시
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.SEND_SMS}, REQUEST_PERMISSION_SEND_SMS);
+            } else {
+                // SEND_SMS 권한이 있는 경우 알림 및 SMS 보내기
+                addNotificationChannel(); // 알림 채널 추가
+                sendNotification(); // 알림 보내기
+            }
+        }
+    }
+
 }

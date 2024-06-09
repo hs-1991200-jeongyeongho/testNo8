@@ -56,13 +56,22 @@
         android:layout_centerHorizontal="true"
         android:layout_marginTop="16dp"/>
 
+    <Button
+        android:id="@+id/detect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Detect"
+        android:layout_below="@id/stopRecordingButton"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="16dp"/>
+
     <LinearLayout
         android:id="@+id/encrypted_text_container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:layout_marginTop="32dp"
-        android:layout_below="@id/stopRecordingButton"
+        android:layout_below="@id/detect"
         android:layout_centerHorizontal="true">
 
         <TextView
@@ -105,6 +114,35 @@
 
         <TextView
             android:id="@+id/txt_decrypted"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="-"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/detected_text_container"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp"
+        android:layout_below="@id/decrypted_text_container"
+        android:layout_centerHorizontal="true"
+        android:layout_marginHorizontal="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Detect result :"
+            android:textColor="#000000"
+            android:layout_marginEnd="16dp"
+            android:textSize="18sp"
+            app:fontFamily="sans-serif-black" />
+
+        <TextView
+            android:id="@+id/detect_result"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="-"
