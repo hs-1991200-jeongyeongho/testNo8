@@ -50,7 +50,7 @@ public class AlertActivity extends Activity {
     // SMS 보내기 메서드
     private void sendSms() {
         try {
-            String phoneNumber = "010-8937-5475";
+            String phoneNumber = "010-"; // 실제 번호 넣어서 실행
             String message = "보이스 피싱 탐지";
 
             SmsManager smsManager = SmsManager.getDefault();

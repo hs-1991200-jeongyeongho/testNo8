@@ -13,6 +13,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -69,6 +71,8 @@ public class MainActivity extends AppCompatActivity {
 
     private String detect_result_alert;
 
+    private ActivityResultLauncher<String> getContentLauncher;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -76,13 +80,49 @@ public class MainActivity extends AppCompatActivity {
 
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
 
+        tv_output = findViewById(R.id.detect_result); // TextView 초기화
+
+        getContentLauncher = registerForActivityResult(
+                new ActivityResultContracts.GetContent(),
+                uri -> {
+                    if (uri != null) {
+                        try {
+                            InputStream inputStream = getContentResolver().openInputStream(uri);
+                            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                            StringBuilder stringBuilder = new StringBuilder();
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                stringBuilder.append(line).append("\n");
+                            }
+                            reader.close();
+                            inputStream.close();
+
+                            String fileContent = stringBuilder.toString();
+
+                            // 텍스트 전처리 및 모델 입력 준비
+                            float[] input = preprocessText(fileContent);
+                            float[] output = new float[5];
+
+                            // 모델 실행
+                            Interpreter lite = getTfliteInterpreter("converted_model.tflite");
+                            lite.run(input, output);
+
+                            // 결과 처리 및 표시
+                            displayOutput(output);
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+        );
+
         Button detectBtn = findViewById(R.id.detect);
         detectBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                detect_result_alert = tv_output.getText().toString();
-                Log.i(TAG,"Result=" + detect_result_alert);
-                checkAndSendSMS(detect_result_alert);
+                // Launch the file picker
+                getContentLauncher.launch("text/plain");
             }
         });
     }
@@ -204,42 +244,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FROM_TXT_FILE && resultCode == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            if (uri != null) {
-                try {
-                    InputStream inputStream = getContentResolver().openInputStream(uri);
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                    StringBuilder stringBuilder = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        stringBuilder.append(line).append("\n");
-                    }
-                    reader.close();
-                    inputStream.close();
-
-                    String fileContent = stringBuilder.toString();
-
-                    // 텍스트 전처리 및 모델 입력 준비
-                    float[] input = preprocessText(fileContent);
-                    float[] output = new float[5];
-
-                    // 모델 실행
-                    Interpreter lite = getTfliteInterpreter("converted_model.tflite");
-                    lite.run(input, output);
-
-                    // 결과 처리 및 표시
-                    displayOutput(output);
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
-
     // 이건 해보고 안되면 해야될수도 잘 모르겠음
     private float[] preprocessText(String text) {
         // 텍스트 전처리 로직 구현 (예: 단어 빈도수, 임베딩 등)
@@ -248,15 +252,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void displayOutput(float[] output) {
-        for (int i = 0; i < output.length; i++) {
-            if (output[i] * 100 > 80) {
-                String resultText = Float.toString(output[i] * 100);
-                tv_output.setText(resultText);
-                return;  // 하나의 결과만 표시하고 종료
-            }
+        // output 배열의 내용을 TextView에 표시 (예시)
+        StringBuilder result = new StringBuilder();
+        for (float val : output) {
+            result.append(val).append("\n");
         }
-        tv_output.setText("보이스피싱이 감지되지 않았습니다.");
+        tv_output.setText(result.toString());
+
+        // 텍스트를 가져와서 checkAndSendSMS 호출
+        detect_result_alert = tv_output.getText().toString();
+        Log.i(TAG, "Result=" + detect_result_alert);
+        checkAndSendSMS(detect_result_alert);
     }
+
 
 
 
