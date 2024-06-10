@@ -8,11 +8,14 @@ import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -60,7 +63,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_PERMISSION_SEND_SMS = 1; // SMS 보내기 권한 요청 코드
     private static final int REQUEST_PERMISSION_POST_NOTIFICATIONS = 2; // 알림 권한 요청 코드
-    private static final int FROM_TXT_FILE = 1;
+    private static final int REQUEST_PERMISSION_MANAGE_EXTERNAL_STORAGE = 1001;
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
     private static final String TAG = "MainActivity";
     private static final String API_KEY = "YOUR_API_KEY";  // Replace with your actual API key
@@ -72,6 +75,7 @@ public class MainActivity extends AppCompatActivity {
     private String detect_result_alert;
 
     private ActivityResultLauncher<String> getContentLauncher;
+    private ActivityResultLauncher<Intent> manageStoragePermissionLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,80 +88,134 @@ public class MainActivity extends AppCompatActivity {
 
         getContentLauncher = registerForActivityResult(
                 new ActivityResultContracts.GetContent(),
-                uri -> {
-                    if (uri != null) {
-                        try {
-                            InputStream inputStream = getContentResolver().openInputStream(uri);
-                            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                            StringBuilder stringBuilder = new StringBuilder();
-                            String line;
-                            while ((line = reader.readLine()) != null) {
-                                stringBuilder.append(line).append("\n");
+                new ActivityResultCallback<Uri>() {
+                    @Override
+                    public void onActivityResult(Uri uri) {
+                        if (uri != null) {
+                            try {
+                                InputStream inputStream = getContentResolver().openInputStream(uri);
+                                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                                StringBuilder stringBuilder = new StringBuilder();
+                                String line;
+                                while ((line = reader.readLine()) != null) {
+                                    stringBuilder.append(line).append("\n");
+                                }
+                                reader.close();
+                                inputStream.close();
+
+                                String fileContent = stringBuilder.toString();
+
+                                // 텍스트 전처리 및 모델 입력 준비
+                                float[] input = preprocessText(fileContent);
+                                float[] output = new float[5];
+
+                                // 모델 실행
+                                Interpreter lite = getTfliteInterpreter("converted_model.tflite");
+                                lite.run(input, output);
+
+                                // 결과 처리 및 표시
+                                displayOutput(output);
+
+                            } catch (IOException e) {
+                                e.printStackTrace();
                             }
-                            reader.close();
-                            inputStream.close();
-
-                            String fileContent = stringBuilder.toString();
-
-                            // 텍스트 전처리 및 모델 입력 준비
-                            float[] input = preprocessText(fileContent);
-                            float[] output = new float[5];
-
-                            // 모델 실행
-                            Interpreter lite = getTfliteInterpreter("converted_model.tflite");
-                            lite.run(input, output);
-
-                            // 결과 처리 및 표시
-                            displayOutput(output);
-
-                        } catch (IOException e) {
-                            e.printStackTrace();
                         }
                     }
-                }
-        );
+                });
+
+        // 권한 설정 화면 런처 초기화
+        manageStoragePermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        if (Environment.isExternalStorageManager()) {
+                            // 권한이 부여된 경우 파일 선택기 실행
+                            getContentLauncher.launch("text/plain");
+                        } else {
+                            Log.e(TAG, "Manage External Storage permission not granted.");
+                        }
+                    }
+                });
 
         Button detectBtn = findViewById(R.id.detect);
         detectBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // Launch the file picker
-                getContentLauncher.launch("text/plain");
+                // 권한 요청 및 파일 선택기 실행
+                requestManageExternalStoragePermission();
             }
         });
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        permissionToReadStorageAccepted = requestCode == REQUEST_RECORD_AUDIO_PERMISSION && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-
-        if (requestCode == REQUEST_PERMISSION_SEND_SMS) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // SMS 보내기 권한이 허용된 경우 알림 및 SMS 보내기
-                addNotificationChannel(); // 알림 채널 추가
-                sendNotification(); // 알림 보내기
+    private void requestManageExternalStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                manageStoragePermissionLauncher.launch(intent);
             } else {
-                // SMS 보내기 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
-                Toast.makeText(this, "SMS 보내기 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+                // 이미 권한이 있는 경우 파일 선택기 실행
+                getContentLauncher.launch("text/plain");
             }
-        } else if (requestCode == REQUEST_PERMISSION_POST_NOTIFICATIONS) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // POST_NOTIFICATIONS 권한이 허용된 경우 알림 보내기
-                sendNotification();
-            } else {
-                // POST_NOTIFICATIONS 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
-                Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
-            }
-        }
-
-        if (permissionToReadStorageAccepted) {
-            transcribeAudioFromTphone();
         } else {
-            finish();
+            // Android 10 이하에서는 기존 권한 요청
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQUEST_PERMISSION_MANAGE_EXTERNAL_STORAGE);
         }
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PERMISSION_MANAGE_EXTERNAL_STORAGE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Environment.isExternalStorageManager()) {
+                    // 권한이 부여된 경우 파일 선택기 실행
+                    getContentLauncher.launch("text/plain");
+                } else {
+                    Log.e(TAG, "Manage External Storage permission not granted.");
+                }
+            }
+        }
+    }
+/////////////
+@Override
+public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    boolean permissionToReadStorageAccepted = requestCode == REQUEST_RECORD_AUDIO_PERMISSION && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+
+    if (requestCode == REQUEST_PERMISSION_MANAGE_EXTERNAL_STORAGE) {
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            // 권한이 부여된 경우 파일 선택기 실행
+            getContentLauncher.launch("text/plain");
+        } else {
+            Log.e(TAG, "READ_EXTERNAL_STORAGE permission not granted.");
+        }
+    } else if (requestCode == REQUEST_PERMISSION_SEND_SMS) {
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            // SMS 보내기 권한이 허용된 경우 알림 및 SMS 보내기
+            addNotificationChannel(); // 알림 채널 추가
+            sendNotification(); // 알림 보내기
+        } else {
+            // SMS 보내기 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
+            Toast.makeText(this, "SMS 보내기 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+        }
+    } else if (requestCode == REQUEST_PERMISSION_POST_NOTIFICATIONS) {
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            // POST_NOTIFICATIONS 권한이 허용된 경우 알림 보내기
+            sendNotification();
+        } else {
+            // POST_NOTIFICATIONS 권한이 거부된 경우 사용자에게 알림 또는 대체 로직을 제공할 수 있음
+            Toast.makeText(this, "알림 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    if (permissionToReadStorageAccepted) {
+        transcribeAudioFromTphone();
+    } else {
+        finish();
+    }
+}
+////////////
     private void transcribeAudioFromTphone() {
         // T전화 녹음 파일 경로 (예시 경로, 실제 경로는 확인 필요)
         String filePath = "/storage/emulated/0/Call/20240527.wav";
